@@ -7,6 +7,7 @@ from pantomime_dataset import PantomimeDataset
 from torch_geometric.data import DataLoader
 import torch.nn.functional as F
 import argparse
+import numpy as np
 import sys
 from utils.augmentation_transformer import AugmentationTransformer
 import torch_geometric.transforms as Transformers
@@ -29,9 +30,11 @@ parser.add_argument('--graph_convolution_layers', default=2, type=int, help='Num
 parser.add_argument('--max_epoch', type=int, default=1000, help='Epoch to run [default: 251]')
 parser.add_argument('--normalize_data', default=False, help='Normalize the point cloud [default: False]')
 parser.add_argument('--gpu_id', default=0, help='GPU ID [default: 0]')
-parser.add_argument('--batch_size', type=int, default=1, help='Batch size [default: 32]')
+# batch_size: must be able to split total amount of gestures equally
+parser.add_argument('--batch_size', type=int, default=20, help='Batch size [default: 32]')
 parser.add_argument('--dataset', default='data/primary_32_f_32_p_without_outlier_removal', help='Dataset path. [default: data/primary_32_f_32_p_without_outlier_removal]')
-parser.add_argument('--num_class', type=int, default=21, help='Number of classes. [default: 21]')
+# num_class : number of different gestures
+parser.add_argument('--num_class', type=int, default=9, help='Number of classes. [default: 21]')
 parser.add_argument('--early_stopping', default='True', help='Whether to use early stopping [default: True]')
 parser.add_argument('--early_stopping_patience', type=int, default=100,
                     help='Stop the training if there is no improvements after this ' +
@@ -96,12 +99,13 @@ def train():
     model.train()
 
     total_loss = 0
-    for data in train_loader:
+    for i, data in enumerate(train_loader):
         data = data.to(device)
+        print(f'Training batch {i}...')
         data = augmentation_transformer(data)
         optimizer.zero_grad()
         out = model(data)
-        loss = F.nll_loss(out, data.y.squeeze())
+        loss = F.nll_loss(out, data.y.squeeze().to(torch.long))
         loss.backward()
         total_loss += loss.item() * data.num_graphs
         optimizer.step()
@@ -112,8 +116,13 @@ def train():
 def test(loader):
     model.eval()
     correct = 0
-    for data in loader:
+    for i, data in enumerate(loader):
         data = data.to(device)
+        print(data.pos.shape)
+        tzeros = torch.tensor(np.zeros(data.pos.size(0))).unsqueeze(1)
+        data.pos = torch.cat((data.pos, tzeros), dim = 1)
+        #print(data)
+        print(print(f'Testing batch {i}...'))
         with torch.no_grad():
             pred = model(data).max(dim=1)[1]
         correct += pred.eq(data.y.squeeze()).sum().item()
@@ -126,7 +135,7 @@ best_acc_epoch = -1
 current_acc = -1
 last_improvement = 0
 for epoch in range(1, MAX_EPOCH):
-    loss = train()
+    loss = train() #augmentation happens here
     current_acc = test(test_loader)
     if current_acc > best_acc:
         log_string('Epoch {:03d}, Train Loss: {:.4f}, Test Accuracy: {:.4f}'.format(epoch, loss, current_acc))
