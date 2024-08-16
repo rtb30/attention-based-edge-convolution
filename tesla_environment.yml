@@ -87,6 +87,7 @@ dependencies:
   - zipp=3.17.0=py38h06a4308_0
   - zlib=1.2.13=h5eee18b_0
   - zstd=1.5.5=hc292b87_0
+  - seaborn
   - pip:
       - certifi==2022.12.7
       - charset-normalizer==2.1.1

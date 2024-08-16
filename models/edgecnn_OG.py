@@ -18,7 +18,8 @@ def MLP(channels, batch_norm=True):
         for i in range(1, len(channels))
     ])
 
-
+# This module is a 3D spatial transformer network that learns an affine transformation matrix for 3D point clouds. 
+# It helps the model become invariant to certain geometric transformations by aligning the input points
 # class STN3d(nn.Module):
 #     def __init__(self):
 #         super(STN3d, self).__init__()
@@ -55,7 +56,9 @@ def MLP(channels, batch_norm=True):
 #         x = x.view(-1, 3, 3)
 #         return x
 
-
+# A more general form of the spatial transformer that can operate on higher-dimensional feature spaces 
+# (e.g., after the first few layers of a neural network)
+# However, it is not used in your current model but is implemented
 class STNkd(nn.Module):
     def __init__(self, k=64):
         super(STNkd, self).__init__()
@@ -99,9 +102,14 @@ class STNkd(nn.Module):
 class Net(torch.nn.Module):
     def __init__(self, out_channels, graph_convolution_layers=2, T=1, k=4, spatio_temporal_factor=0.01, aggr='max'):
         super().__init__()
-        self.stn = STN3d()
+
+        # Spatial Transformer Network for alignment
+        self.stn = STNkd(k = 2)
+
         self.graph_convolution_layers = graph_convolution_layers
+
         # self.fstn = STNkd(k=64)
+        # other 
         # self.conv1 = AutomatedGraphDynamicEdgeConv(MLP([3, 16]),
         #                                            MLP([2 * 16, 64, 64, 64]),
         #                                            16, 64, 4, k, aggr)
@@ -114,26 +122,31 @@ class Net(torch.nn.Module):
         # self.conv2 = TemporalSelfAttentionDynamicEdgeConv(MLP([2 * 64, 128]),
         #                                                   128, 8, k, aggr)
 
-        self.conv1 = GeneralizedTemporalSelfAttentionDynamicEdgeConv(nn=MLP([2 * 3, 64, 64, 64]),
-                                                                     attention_in_features=64,
-                                                                     head_num=8,
-                                                                     k=k,
-                                                                     spatio_temporal_factor=spatio_temporal_factor,
-                                                                     T=T)
-        self.conv2 = GeneralizedTemporalSelfAttentionDynamicEdgeConv(nn=MLP([2 * 64, 128]), 
-                                                                     attention_in_features=128,
-                                                                     head_num=8,
-                                                                     k=k,
-                                                                     spatio_temporal_factor=spatio_temporal_factor,
-                                                                     aggr=aggr,
-                                                                     T=T)
-        self.conv3 = GeneralizedTemporalSelfAttentionDynamicEdgeConv(nn=MLP([2 * 128, 256]),
-                                                                     attention_in_features=256,
-                                                                     head_num=8,
-                                                                     k=k,
-                                                                     spatio_temporal_factor=spatio_temporal_factor,
-                                                                     aggr=aggr,
-                                                                     T=T)
+        # Define graph convolutional layers
+        self.conv1 = GeneralizedTemporalSelfAttentionDynamicEdgeConv(
+            nn                      = MLP([2*2, 64, 64, 64]),
+            attention_in_features   = 64,
+            head_num                = 8,
+            k                       = k,
+            spatio_temporal_factor  = spatio_temporal_factor,
+            T                       = T)
+        self.conv2 = GeneralizedTemporalSelfAttentionDynamicEdgeConv(
+            nn                      = MLP([2 * 64, 128]), 
+            attention_in_features   = 128,
+            head_num                = 8,
+            k                       = k,
+            spatio_temporal_factor  = spatio_temporal_factor,
+            aggr                    = aggr,
+            T                       = T)
+        self.conv3 = GeneralizedTemporalSelfAttentionDynamicEdgeConv(
+            nn                      = MLP([2 * 128, 256]),
+            attention_in_features   = 256,
+            head_num                = 8,
+            k                       = k,
+            spatio_temporal_factor  = spatio_temporal_factor,
+            aggr                    = aggr,
+            T                       = T)
+        
         assert 1 <= graph_convolution_layers <= 3
         if graph_convolution_layers == 3:
             self.lin1 = MLP([256 + 128 + 64, 1024])
@@ -148,11 +161,15 @@ class Net(torch.nn.Module):
 
     def forward(self, data):
         sequence_numbers, pos, batch = data.x[:, 0].float(), data.pos.float(), data.batch
-        pos = pos.reshape(len(torch.unique(data.batch)), -1, 3).transpose(2, 1)
+
+        # If using STNkd, apply spatial transformation
+        pos = pos.reshape(len(torch.unique(data.batch)), -1, 2).transpose(2, 1)
         trans = self.stn(pos)
         pos = pos.transpose(2, 1)
         pos = torch.bmm(pos, trans)
-        pos = pos.reshape(-1, 3)
+        pos = pos.reshape(-1, 2)
+
+        # Apply graph convolutions
         if self.graph_convolution_layers == 3:
             x1 = self.conv1(pos, sequence_numbers, batch)
             x2 = self.conv2(x1, sequence_numbers, batch)
@@ -165,6 +182,7 @@ class Net(torch.nn.Module):
         else:
             x1 = self.conv1(pos, sequence_numbers, batch)
             out = self.lin1(x1)
+            
         out = global_max_pool(out, batch)
         out = self.mlp(out)
         return F.log_softmax(out, dim=1)

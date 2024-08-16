@@ -266,6 +266,7 @@ class TemporalSelfAttentionDynamicEdgeConv(MessagePassing):
     def __repr__(self):
         return '{}(nn={}, k={})'.format(self.__class__.__name__, self.nn,
                                         self.k)
+    
 def count_GeneralizedTemporalSelfAttentionDynamicEdgeConv(m, x, y):
     x_input, sequence_number, batch = x
     frame_number = len(torch.unique(sequence_number))
@@ -305,6 +306,7 @@ def count_Multi_head_self_attention(m, x, y):
     softmax_ops = batch_size * (total_exp + total_add + total_div)
     m.total_ops += torch.DoubleTensor([attention_ops + softmax_ops + query_ops])
 
+#################### THIS IS WHERE WE GRAPH DATA ####################
 def make_proper_data(data, sequence_number, batch, self_loop=False, T=1):
     source, source_batch, target, target_batch = data, batch, data.clone(), None
     index_mapper = torch.arange(0, len(data), device=data.device)

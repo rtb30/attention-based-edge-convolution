@@ -10,8 +10,8 @@ class SelfAttentionEdgeIndexCreatorLayer(nn.Module):
         self.number_of_edges = number_of_edges
         self.head_dim = embed_size // heads
         self.head_edges = number_of_edges // heads
-        assert (embed_size % heads == 0), 'Embedding size needs to be divisible by heads'
-        assert (number_of_edges % heads == 0), 'The number of edges needs to be divisible by heads'
+        assert (embed_size % heads == 0), f'\nEmbedding size ({embed_size}) needs to be divisible by number of heads ({heads})\n'
+        assert (number_of_edges % heads == 0), f'\nThe number of edges ({number_of_edges}) needs to be divisible by heads ({heads})'
 
         self.keys = nn.Linear(self.head_dim, self.head_dim, bias=False)
         self.queries = nn.Linear(self.head_dim, self.head_dim, bias=False)

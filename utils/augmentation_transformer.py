@@ -11,20 +11,25 @@ class AugmentationTransformer(object):
 
     # data augmentation on a batch of 3D point cloud data
     def __call__(self, data):
+        # add zeros as a dimension to fit data
+        #tzeros = torch.tensor(np.zeros(data.pos.size(0))).unsqueeze(1)
+        #print(data.pos.shape, tzeros.shape)
+        #print(data.pos.shape)
+        #data.pos = torch.cat((data.pos, tzeros), dim = 1)
+        
         # batch_data is on the cpu, detaches any graphical info, and converts to a numpy array
         # reshaoes and organizes the data into batches with each point having 3 coordinates
         # -1 is a special value which will automatically calculate the dimension
-        tzeros = torch.tensor(np.zeros(data.pos.size(0))).unsqueeze(1)
-        #print(data.pos.shape, tzeros.shape)
-        data.pos = torch.cat((data.pos, tzeros), dim = 1)
-        batch_data = data.pos.cpu().detach().numpy().reshape((self.batch_size, -1, 3))
-
+        batch_data = data.pos.cpu().detach().numpy().reshape((self.batch_size, -1, 2))
+        #batch_data = data.pos.cpu().detach().numpy().reshape((self.batch_size, 80))
         # sequence number is extracted from the first column of data.x
         # the .x is storing an attribute for each point cloud point
         seq_number = data.x[:, 0].cpu().detach().numpy().reshape((self.batch_size, -1))
 
+        '''
+        # *****************************************************
+        # START HERE TO REMOVE PREPROCCESSING - dont forget changing data_after_augmentation
         # checks if normal channel is true or false
-        # rotates data appropriately
         if self.normal_channel:
             rotated_data = provider.rotate_point_cloud_with_normal(batch_data)
             rotated_data = provider.rotate_perturbation_point_cloud_with_normal(rotated_data)
@@ -33,27 +38,57 @@ class AugmentationTransformer(object):
             rotated_data = provider.rotate_perturbation_point_cloud(rotated_data)
 
         # apply scaling, shifting, and jitteirng
-        jittered_data = provider.random_scale_point_cloud(rotated_data[:, :, 0:3])
+        jittered_data = provider.random_scale_point_cloud(rotated_data[:, :, 0:2])
         jittered_data = provider.shift_point_cloud(jittered_data)
         jittered_data = provider.jitter_point_cloud(jittered_data)
 
         # put filtered data back into original point cloud
-        rotated_data[:, :, 0:3] = jittered_data
+        rotated_data[:, :, 0:2] = jittered_data
+        # END HERE TO REMOVE PREPROCCESSING
+        # *****************************************************
+        '''
 
         # reshape back into original form convert back into a tensor
         # a tensor is tensor is a multi-dimensional array that can be used to store and manipulate data
         # especially for operations on a GPU
+        #data_after_augmentation = rotated_data
+        data_after_augmentation = batch_data
+        # data_after_augmentation, shuffled_indices = provider.shuffle_points(rotated_data)
+        # seq_number = seq_number[:, shuffled_indices]
+        data.pos = torch.from_numpy(data_after_augmentation.reshape(-1, 2)).to(data.pos.device)
+        #data.pos = torch.from_numpy(data_after_augmentation.reshape(-1, 80)).to(data.pos.device)
+
+        # THE PROBLEM IS HERE FOR 30 DATAPOINTS
+        data.x = torch.from_numpy(
+            np.insert(data_after_augmentation.reshape(-1, 2), 0, seq_number.reshape(-1), axis=1)
+            #np.insert(data_after_augmentation.reshape(-1, 80), 0, seq_number.reshape(-1), axis=1)
+        ).to(data.x.device)
+        return data
+    '''
+    # ORIGINAL CALL FUNCTION - DOESNT ADD ANOTHER COLUMN OF ZEROS
+    def __call__(self, data):
+        batch_data = data.pos.cpu().detach().numpy().reshape((self.batch_size, -1, 3))
+        seq_number = data.x[:, 0].cpu().detach().numpy().reshape((self.batch_size, -1))
+        if self.normal_channel:
+            rotated_data = provider.rotate_point_cloud_with_normal(batch_data)
+            rotated_data = provider.rotate_perturbation_point_cloud_with_normal(rotated_data)
+        else:
+            rotated_data = provider.rotate_point_cloud(batch_data)
+            rotated_data = provider.rotate_perturbation_point_cloud(rotated_data)
+        jittered_data = provider.random_scale_point_cloud(rotated_data[:, :, 0:3])
+        jittered_data = provider.shift_point_cloud(jittered_data)
+        jittered_data = provider.jitter_point_cloud(jittered_data)
+        rotated_data[:, :, 0:3] = jittered_data
         data_after_augmentation = rotated_data
         # data_after_augmentation, shuffled_indices = provider.shuffle_points(rotated_data)
         # seq_number = seq_number[:, shuffled_indices]
         data.pos = torch.from_numpy(data_after_augmentation.reshape(-1, 3)).to(data.pos.device)
-
-        # THE PROBLEM IS HERE FOR 30 DATAPOINTS
         data.x = torch.from_numpy(
             np.insert(data_after_augmentation.reshape(-1, 3), 0, seq_number.reshape(-1), axis=1)
         ).to(data.x.device)
         return data
-
+    '''
+    
 
 class ModelNetAugmentationTransformer(object):
     def __init__(self, normal_channel, batch_size):
